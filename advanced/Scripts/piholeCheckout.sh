@@ -3,204 +3,199 @@
 # (c) 2017 Pi-hole, LLC (https://pi-hole.net)
 # Network-wide ad blocking via your own hardware.
 #
-# Switch Pi-hole subsystems to a different Github branch
+# Switch Pi-hole subsystems to a different GitHub branch.
 #
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
 readonly PI_HOLE_FILES_DIR="/etc/.pihole"
-PH_TEST="true" source "${PI_HOLE_FILES_DIR}/automated install/basic-install.sh"
+PH_TEST="true"
+source "${PI_HOLE_FILES_DIR}/automated install/basic-install.sh"
 
 # webInterfaceGitUrl set in basic-install.sh
 # webInterfaceDir set in basic-install.sh
 # piholeGitURL set in basic-install.sh
 # is_repo() sourced from basic-install.sh
 # setupVars set in basic-install.sh
+# check_download_exists sourced from basic-install.sh
+# fully_fetch_repo sourced from basic-install.sh
+# get_available_branches sourced from basic-install.sh
+# fetch_checkout_pull_branch sourced from basic-install.sh
+# checkout_pull_branch sourced from basic-install.sh
 
 source "${setupVars}"
-update="false"
-
-# Colour codes
-red="\e[1;31m"
-def="\e[0m"
-
-fully_fetch_repo() {
-  # Add upstream branches to shallow clone
-  local directory="${1}"
-
-  cd "${directory}" || return 1
-  if is_repo "${directory}"; then
-    git remote set-branches origin '*' || return 1
-    git fetch --quiet || return 1
-  else
-    return 1
-  fi
-  return 0
-}
-
-get_available_branches() {
-  # Return available branches
-  local directory="${1}"
-
-  cd "${directory}" || return 1
-  # Get reachable remote branches
-  git remote show origin | grep 'tracked' | sed 's/tracked//;s/ //g'
-  return
-}
-
-
-fetch_checkout_pull_branch() {
-  # Check out specified branch
-  local directory="${1}"
-  local branch="${2}"
-
-  # Set the reference for the requested branch, fetch, check it put and pull it
-  cd "${directory}"
-  git remote set-branches origin "${branch}" || return 1
-  git stash --all --quiet &> /dev/null || true
-  git clean --force -d || true
-  git fetch --quiet || return 1
-  checkout_pull_branch "${directory}" "${branch}" || return 1
-}
-
-checkout_pull_branch() {
-  # Check out specified branch
-  local directory="${1}"
-  local branch="${2}"
-  local oldbranch
-
-  cd "${directory}" || return 1
-
-  oldbranch="$(git symbolic-ref HEAD)"
-
-  git checkout "${branch}" || return 1
-
-  if [ "$(git diff "${oldbranch}" | grep -c "^")" -gt "0" ]; then
-    update="true"
-  fi
-
-  git pull || return 1
-  return 0
-}
 
 warning1() {
-  echo "  Please note that changing branches severely alters your Pi-hole subsystems"
-  echo "  Features that work on the master branch, may not on a development branch"
-  echo -e "  ${red}This feature is NOT supported unless a Pi-hole developer explicitly asks!${def}"
-  read -r -p "  Have you read and understood this? [y/N] " response
-  case ${response} in
-  [yY][eE][sS]|[yY])
-    echo "::: Continuing with branch change."
-    return 0
-    ;;
-  *)
-    echo "::: Branch change has been cancelled."
-    return 1
-    ;;
-  esac
+    echo "  Please note that changing branches severely alters your Pi-hole subsystems"
+    echo "  Features that work on the master branch, may not on a development branch"
+    echo -e "  ${COL_LIGHT_RED}This feature is NOT supported unless a Pi-hole developer explicitly asks!${COL_NC}"
+    read -r -p "  Have you read and understood this? [y/N] " response
+    case "${response}" in
+        [yY][eE][sS]|[yY])
+            echo ""
+            return 0
+            ;;
+        *)
+            echo -e "\\n  ${INFO} Branch change has been canceled"
+            return 1
+            ;;
+    esac
 }
 
 checkout() {
-  local corebranches
-  local webbranches
+    local corebranches
+    local webbranches
 
-  # Avoid globbing
-  set -f
+    # Check if FTL is installed - do this early on as FTL is a hard dependency for Pi-hole
+    local funcOutput
+    funcOutput=$(get_binary_name) #Store output of get_binary_name here
+    local binary
+    binary="pihole-FTL${funcOutput##*pihole-FTL}" #binary name will be the last line of the output of get_binary_name (it always begins with pihole-FTL)
 
-  #This is unlikely
-  if ! is_repo "${PI_HOLE_FILES_DIR}" ; then
-    echo "::: Critical Error: Core Pi-hole repo is missing from system!"
-    echo "::: Please re-run install script from https://github.com/pi-hole/pi-hole"
-    exit 1;
-  fi
-  if [[ ${INSTALL_WEB} == "true" ]]; then
-    if ! is_repo "${webInterfaceDir}" ; then
-      echo "::: Critical Error: Web Admin repo is missing from system!"
-      echo "::: Please re-run install script from https://github.com/pi-hole/pi-hole"
-      exit 1;
-    fi
-  fi
+    # Avoid globbing
+    set -f
 
-  if [[ -z "${1}" ]]; then
-    echo "::: No option detected. Please use 'pihole checkout <master|dev>'."
-    echo "::: Or enter the repository and branch you would like to check out:"
-    echo "::: 'pihole checkout <web|core> <branchname>'"
-    exit 1
-  fi
+    # This is unlikely
+    if ! is_repo "${PI_HOLE_FILES_DIR}" ; then
+        echo -e "  ${COL_LIGHT_RED}Error: Core Pi-hole repo is missing from system!"
+        echo -e "  Please re-run install script from https://github.com/pi-hole/pi-hole${COL_NC}"
+        exit 1;
+    fi
+    if [[ "${INSTALL_WEB_INTERFACE}" == "true" ]]; then
+        if ! is_repo "${webInterfaceDir}" ; then
+            echo -e "  ${COL_LIGHT_RED}Error: Web Admin repo is missing from system!"
+            echo -e "  Please re-run install script from https://github.com/pi-hole/pi-hole${COL_NC}"
+            exit 1;
+        fi
+    fi
 
-  if ! warning1 ; then
-    exit 1
-  fi
+    if [[ -z "${1}" ]]; then
+        echo -e "  ${COL_LIGHT_RED}Invalid option${COL_NC}"
+        echo -e "  Try 'pihole checkout --help' for more information."
+        exit 1
+    fi
 
-  if [[ "${1}" == "dev" ]] ; then
-    # Shortcut to check out development branches
-    echo "::: Shortcut \"dev\" detected - checking out development / devel branches ..."
-    echo "::: Pi-hole core"
-    fetch_checkout_pull_branch "${PI_HOLE_FILES_DIR}" "development" || { echo "Unable to pull Core developement branch"; exit 1; }
-    if [[ ${INSTALL_WEB} == "true" ]]; then
-      echo "::: Web interface"
-      fetch_checkout_pull_branch "${webInterfaceDir}" "devel" || { echo "Unable to pull Web development branch"; exit 1; }
+    if ! warning1 ; then
+        exit 1
     fi
-    echo "::: done!"
-  elif [[ "${1}" == "master" ]] ; then
-    # Shortcut to check out master branches
-    echo "::: Shortcut \"master\" detected - checking out master branches ..."
-    echo "::: Pi-hole core"
-    fetch_checkout_pull_branch "${PI_HOLE_FILES_DIR}" "master" || { echo "Unable to pull Core master branch"; exit 1; }
-    if [[ ${INSTALL_WEB} == "true" ]]; then
-      echo "::: Web interface"
-      fetch_checkout_pull_branch "${webInterfaceDir}" "master" || { echo "Unable to pull web master branch"; exit 1; }
-    fi
-    echo "::: done!"
-  elif [[ "${1}" == "core" ]] ; then
-    echo -n "::: Fetching remote branches for Pi-hole core from ${piholeGitUrl} ... "
-    if ! fully_fetch_repo "${PI_HOLE_FILES_DIR}" ; then
-      echo "::: Fetching all branches for Pi-hole core repo failed!"
-      exit 1
-    fi
-    corebranches=($(get_available_branches "${PI_HOLE_FILES_DIR}"))
-    echo " done!"
-    echo "::: ${#corebranches[@]} branches available"
-    echo ":::"
-    # Have to user chosing the branch he wants
-    if ! (for e in "${corebranches[@]}"; do [[ "$e" == "${2}" ]] && exit 0; done); then
-      echo "::: Requested branch \"${2}\" is not available!"
-      echo "::: Available branches for core are:"
-      for e in "${corebranches[@]}"; do echo ":::   $e"; done
-      exit 1
-    fi
-    checkout_pull_branch "${PI_HOLE_FILES_DIR}" "${2}"
-  elif [[ "${1}" == "web" && "${INSTALL_WEB}" == "true" ]] ; then
-    echo -n "::: Fetching remote branches for the web interface from ${webInterfaceGitUrl} ... "
-    if ! fully_fetch_repo "${webInterfaceDir}" ; then
-      echo "::: Fetching all branches for Pi-hole web interface repo failed!"
-      exit 1
-    fi
-    webbranches=($(get_available_branches "${webInterfaceDir}"))
-    echo " done!"
-    echo "::: ${#webbranches[@]} branches available"
-    echo ":::"
-    # Have to user chosing the branch he wants
-    if ! (for e in "${webbranches[@]}"; do [[ "$e" == "${2}" ]] && exit 0; done); then
-      echo "::: Requested branch \"${2}\" is not available!"
-      echo "::: Available branches for web are:"
-      for e in "${webbranches[@]}"; do echo ":::   $e"; done
-      exit 1
-    fi
-    checkout_pull_branch "${webInterfaceDir}" "${2}"
-  else
-    echo "::: Requested option \"${1}\" is not available!"
-    exit 1
-  fi
 
-  # Force updating everything
-  if [[ ! "${1}" == "web" && "${update}" == "true" ]]; then
-    echo "::: Running installer to upgrade your installation"
-    if "${PI_HOLE_FILES_DIR}/automated install/basic-install.sh" --unattended; then
-      exit 0
+    if [[ "${1}" == "dev" ]] ; then
+        # Shortcut to check out development branches
+        echo -e "  ${INFO} Shortcut \"dev\" detected - checking out development / devel branches..."
+        echo ""
+        echo -e "  ${INFO} Pi-hole Core"
+        fetch_checkout_pull_branch "${PI_HOLE_FILES_DIR}" "development" || { echo "  ${CROSS} Unable to pull Core development branch"; exit 1; }
+        if [[ "${INSTALL_WEB_INTERFACE}" == "true" ]]; then
+            echo ""
+            echo -e "  ${INFO} Web interface"
+            fetch_checkout_pull_branch "${webInterfaceDir}" "devel" || { echo "  ${CROSS} Unable to pull Web development branch"; exit 1; }
+        fi
+        #echo -e "  ${TICK} Pi-hole Core"
+
+        local path
+        path="development/${binary}"
+        echo "development" > /etc/pihole/ftlbranch
+        chmod 644 /etc/pihole/ftlbranch
+    elif [[ "${1}" == "master" ]] ; then
+        # Shortcut to check out master branches
+        echo -e "  ${INFO} Shortcut \"master\" detected - checking out master branches..."
+        echo -e "  ${INFO} Pi-hole core"
+        fetch_checkout_pull_branch "${PI_HOLE_FILES_DIR}" "master" || { echo "  ${CROSS} Unable to pull Core master branch"; exit 1; }
+        if [[ ${INSTALL_WEB_INTERFACE} == "true" ]]; then
+            echo -e "  ${INFO} Web interface"
+            fetch_checkout_pull_branch "${webInterfaceDir}" "master" || { echo "  ${CROSS} Unable to pull Web master branch"; exit 1; }
+        fi
+        #echo -e "  ${TICK} Web Interface"
+        local path
+        path="master/${binary}"
+        echo "master" > /etc/pihole/ftlbranch
+        chmod 644 /etc/pihole/ftlbranch
+    elif [[ "${1}" == "core" ]] ; then
+        str="Fetching branches from ${piholeGitUrl}"
+        echo -ne "  ${INFO} $str"
+        if ! fully_fetch_repo "${PI_HOLE_FILES_DIR}" ; then
+            echo -e "${OVER}  ${CROSS} $str"
+            exit 1
+        fi
+        corebranches=($(get_available_branches "${PI_HOLE_FILES_DIR}"))
+
+        if [[ "${corebranches[*]}" == *"master"* ]]; then
+            echo -e "${OVER}  ${TICK} $str"
+            echo -e "  ${INFO} ${#corebranches[@]} branches available for Pi-hole Core"
+        else
+            # Print STDERR output from get_available_branches
+            echo -e "${OVER}  ${CROSS} $str\\n\\n${corebranches[*]}"
+            exit 1
+        fi
+
+        echo ""
+        # Have the user choose the branch they want
+        if ! (for e in "${corebranches[@]}"; do [[ "$e" == "${2}" ]] && exit 0; done); then
+            echo -e "  ${INFO} Requested branch \"${2}\" is not available"
+            echo -e "  ${INFO} Available branches for Core are:"
+            for e in "${corebranches[@]}"; do echo "      - $e"; done
+            exit 1
+        fi
+        checkout_pull_branch "${PI_HOLE_FILES_DIR}" "${2}"
+    elif [[ "${1}" == "web" ]] && [[ "${INSTALL_WEB_INTERFACE}" == "true" ]] ; then
+        str="Fetching branches from ${webInterfaceGitUrl}"
+        echo -ne "  ${INFO} $str"
+        if ! fully_fetch_repo "${webInterfaceDir}" ; then
+            echo -e "${OVER}  ${CROSS} $str"
+            exit 1
+        fi
+        webbranches=($(get_available_branches "${webInterfaceDir}"))
+
+        if [[ "${webbranches[*]}" == *"master"* ]]; then
+            echo -e "${OVER}  ${TICK} $str"
+            echo -e "  ${INFO} ${#webbranches[@]} branches available for Web Admin"
+        else
+            # Print STDERR output from get_available_branches
+            echo -e "${OVER}  ${CROSS} $str\\n\\n${webbranches[*]}"
+            exit 1
+        fi
+
+        echo ""
+        # Have the user choose the branch they want
+        if ! (for e in "${webbranches[@]}"; do [[ "$e" == "${2}" ]] && exit 0; done); then
+            echo -e "  ${INFO} Requested branch \"${2}\" is not available"
+            echo -e "  ${INFO} Available branches for Web Admin are:"
+            for e in "${webbranches[@]}"; do echo "      - $e"; done
+            exit 1
+        fi
+        checkout_pull_branch "${webInterfaceDir}" "${2}"
+    elif [[ "${1}" == "ftl" ]] ; then
+        local path
+        path="${2}/${binary}"
+
+        if check_download_exists "$path"; then
+            echo "  ${TICK} Branch ${2} exists"
+            echo "${2}" > /etc/pihole/ftlbranch
+            chmod 644 /etc/pihole/ftlbranch
+            FTLinstall "${binary}"
+            restart_service pihole-FTL
+            enable_service pihole-FTL
+        else
+            echo "  ${CROSS} Requested branch \"${2}\" is not available"
+            ftlbranches=( $(git ls-remote https://github.com/pi-hole/ftl | grep 'heads' | sed 's/refs\/heads\///;s/ //g' | awk '{print $2}') )
+            echo -e "  ${INFO} Available branches for FTL are:"
+            for e in "${ftlbranches[@]}"; do echo "      - $e"; done
+            exit 1
+        fi
+
     else
-      echo "Unable to complete update, contact Pi-hole"
-      exit 1
+        echo -e "  ${INFO} Requested option \"${1}\" is not available"
+        exit 1
     fi
-  fi
+
+    # Force updating everything
+    if [[  ! "${1}" == "web" && ! "${1}" == "ftl" ]]; then
+        echo -e "  ${INFO} Running installer to upgrade your installation"
+        if "${PI_HOLE_FILES_DIR}/automated install/basic-install.sh" --unattended; then
+            exit 0
+        else
+            echo -e "  ${COL_LIGHT_RED} Error: Unable to complete update, please contact support${COL_NC}"
+            exit 1
+        fi
+    fi
 }
