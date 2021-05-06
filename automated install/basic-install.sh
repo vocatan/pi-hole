@@ -1075,7 +1075,7 @@ installLogrotate() {
   # Different operating systems have different user / group
   # settings for logrotate that makes it impossible to create
   # a static logrotate file that will work with e.g.
-  # Rasbian and Ubuntu at the same time. Hence, we have to
+  # Raspbian and Ubuntu at the same time. Hence, we have to
   # customize the logrotate script here in order to reflect
   # the local properties of the /var/log directory
   logusergroup="$(stat -c '%U %G' /var/log)"
@@ -1434,7 +1434,7 @@ main() {
     # Clone/Update the repos
     clone_or_update_repos
 
-       # Install packages used by the Pi-hole
+    # Install packages used by the Pi-hole
     if [[ ${INSTALL_WEB} == true ]]; then
       DEPS=("${PIHOLE_DEPS[@]}" "${PIHOLE_WEB_DEPS[@]}")
     else
